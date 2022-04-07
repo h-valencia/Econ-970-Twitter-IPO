@@ -7,7 +7,62 @@ output: html_document
 knitr::opts_chunk$set(echo = FALSE)
 
 library(twitteR)
+library(rtweet)
 library(tidytext)
 library(dplyr)
 library(ggplot2)
 ```
+
+
+```{r}
+# AUTHORIZATION
+
+api_key <- "8pV4MffGxAj5EjDRoxMfUGbNF"
+api_key_secret <- "lY1vkaBeWgGJVjpsIM8vC9iGRt2CSqTp1Z8yqwpAyF2lcXKZDl"
+bearer_token <- "AAAAAAAAAAAAAAAAAAAAAMrjbAEAAAAAc79%2F0X%2B7SG3dwAyiDRCp0ldfA7M%3DHwUVD9XHKhmcCQZOm2p9C0YOYfCfHg4Ug4UykUAUbj2cMD2S3M"
+
+token <- create_token(
+  app = "Econ970twitteripo",
+  consumer_key = api_key,
+  consumer_secret = api_key_secret)
+
+```
+
+
+```{r}
+uber_tweets <- rtweet::get_timeline(c("uber"), n = 3000, parse=T, token = token)
+rtweet::write_as_csv(uber_tweets, "uber_tweets.csv", prepend_ids = TRUE, na = "", fileEncoding = "UTF-8")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
