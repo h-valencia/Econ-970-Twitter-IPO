@@ -1,0 +1,13 @@
+---
+title: "Twitter IPO"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(twitteR)
+library(tidytext)
+library(dplyr)
+library(ggplot2)
+```
