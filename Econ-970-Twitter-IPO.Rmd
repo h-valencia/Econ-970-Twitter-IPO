@@ -8,12 +8,14 @@ knitr::opts_chunk$set(echo = FALSE)
 
 library(twitteR)
 library(rtweet)
+library(stringr)
+library(lubridate)
 library(tidytext)
 library(dplyr)
 library(ggplot2)
 ```
 
-
+# TWITTER
 ```{r}
 # AUTHORIZATION
 
@@ -37,8 +39,14 @@ rtweet::write_as_csv(uber_tweets, "uber_tweets.csv", prepend_ids = TRUE, na = ""
 
 
 
+# IPO
+```{r}
+ipo2021 <- read.csv("~/Downloads/ipos-2021.csv")
 
-
+ipo2021 <- ipo2021 %>%
+  mutate("IPO.q1" = str_detect(IPO.Date, c("Jan", "Feb", "Mar"), negate = FALSE)) %>%
+  filter(IPO.q1 == TRUE)
+```
 
 
 
