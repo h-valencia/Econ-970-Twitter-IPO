@@ -10,20 +10,28 @@ library(twitteR)
 library(rtweet)
 library(stringr)
 library(lubridate)
+library(tidytext)
 library(purrr)
+library(readxl)
+library(httpuv)
+library(ROAuth)
 library(RCurl)
 library(openssl)
 library(tidyverse)
 library(dplyr)
 library(ggplot2)
+
+download.file(url='http://curl.haxx.se/ca/cacert.pem', destfile='cacert.pem')
 ```
 
 # TWITTER
 ```{r}
 # AUTHORIZATION
 
-api_key <- "8pV4MffGxAj5EjDRoxMfUGbNF"
-api_key_secret <- "lY1vkaBeWgGJVjpsIM8vC9iGRt2CSqTp1Z8yqwpAyF2lcXKZDl"
+access_token <- "1120303734-GEPzSvsSOq4pooOg0KA5xhpYatMluCB1Zd5LIMJ"
+access_token_secret <- "srfh2ElJnYTKJPZDVMlrDtv7w7MTuPvTyuiFTkcrUOW0G"
+api_key <- "E8DGvieQ4TZg0GGUqHYDEwdcz"
+api_key_secret <- "DqEbvxIwGgWw71PAupw2s0Q1MYYfi5Zq0BbZyXeHx7wavFyy0b"
 bearer_token <- "AAAAAAAAAAAAAAAAAAAAAMrjbAEAAAAAc79%2F0X%2B7SG3dwAyiDRCp0ldfA7M%3DHwUVD9XHKhmcCQZOm2p9C0YOYfCfHg4Ug4UykUAUbj2cMD2S3M"
 
 token <- create_token(
@@ -31,6 +39,8 @@ token <- create_token(
   consumer_key = api_key,
   consumer_secret = api_key_secret)
 
+token2 <- setup_twitter_oauth(consumer_key = api_key, consumer_secret = api_key_secret, access_token=access_token,
+access_secret=access_token_secret)
 ```
 
 
@@ -47,8 +57,7 @@ rtweet::write_as_csv(uber_tweets, "uber_tweets.csv", prepend_ids = TRUE, na = ""
 ipo2021 <- read.csv("~/Downloads/ipos-2021.csv")
 
 ipo2021 <- ipo2021 %>%
-  mutate("IPO.q1" = str_detect(IPO.Date, c("Jan", "Feb", "Mar"), negate = FALSE)) %>%
-  filter(IPO.q1 == TRUE) %>%
+  filter(Sector == "Technology") %>%
   mutate(IPO.Date = as.Date(IPO.Date, format = "%b %d, %Y"),
          IPO.1Mbefore = IPO.Date %m-% months(1),
          IPO.3Mbefore = IPO.Date %m-% months(3),
@@ -56,28 +65,35 @@ ipo2021 <- ipo2021 %>%
                            gsub("Corp..*", "\\1",
                                 gsub("Co..*", "\\1", 
                                      gsub("Ltd..*", "\\1", Company.Name)))))
+ipo2021$short.name[ipo2021$Company.Name == "Coupang, Inc."] <- "Coupang"
+ipo2021$short.name[ipo2021$Company.Name == "Compute Health Acquisition Corp."] <- "Compute Health Acquisition"
+
 ```
 
 ```{r}
-test <- ipo2021 %>%
-  select(IPO.Date, IPO.3Mbefore, IPO.1Mbefore, Company.Name) %>%
-  mutate(short.name = gsub(",.*", "\\1",
-                           gsub("Corp..*", "\\1",
-                                gsub("Co..*", "\\1", 
-                                     gsub("Ltd..*", "\\1", Company.Name)))))
+twitter_handles <- read_xlsx("~/Downloads/iposignstwitter.xlsx")
 
-words <- paste(c(", Inc.", "Corp.", "Co.", "Ltd.", "Limited", "Corporation", "II", "III", "IV", "VI"), collapse = "|")
-test$short.name <- trimws(gsub(words, "\\1", test$Company.Name))
+ipo2021 <- full_join(twitter_handles, ipo2021, by = "Symbol")
+```
 
-x <- ipo2021[3, 3]
+
+```{r}
+x <- ipo2021$short.name[5]
 search_users(x)
+test <- search_users(x) %>%
+  mutate(twitter_user_id = ifelse(str_contains))
+
+searchTwitter(x)
+
+get_sentiments("bing")
+
 
 ```
 
 
 ```{r}
 for (i in 1:nrow(ipo2021)){
-  x <- ipo2021[i, 3]
+  x <- ipo2021$short.name[i]
   searchTwitter(x, since=ipo2021$IPO.3Mbefore, until=ipo2021$IPO.Date)
 }
 ```
