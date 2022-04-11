@@ -10,7 +10,10 @@ library(twitteR)
 library(rtweet)
 library(stringr)
 library(lubridate)
-library(tidytext)
+library(purrr)
+library(RCurl)
+library(openssl)
+library(tidyverse)
 library(dplyr)
 library(ggplot2)
 ```
@@ -45,10 +48,39 @@ ipo2021 <- read.csv("~/Downloads/ipos-2021.csv")
 
 ipo2021 <- ipo2021 %>%
   mutate("IPO.q1" = str_detect(IPO.Date, c("Jan", "Feb", "Mar"), negate = FALSE)) %>%
-  filter(IPO.q1 == TRUE)
+  filter(IPO.q1 == TRUE) %>%
+  mutate(IPO.Date = as.Date(IPO.Date, format = "%b %d, %Y"),
+         IPO.1Mbefore = IPO.Date %m-% months(1),
+         IPO.3Mbefore = IPO.Date %m-% months(3),
+         short.name = gsub(",.*", "\\1",
+                           gsub("Corp..*", "\\1",
+                                gsub("Co..*", "\\1", 
+                                     gsub("Ltd..*", "\\1", Company.Name)))))
+```
+
+```{r}
+test <- ipo2021 %>%
+  select(IPO.Date, IPO.3Mbefore, IPO.1Mbefore, Company.Name) %>%
+  mutate(short.name = gsub(",.*", "\\1",
+                           gsub("Corp..*", "\\1",
+                                gsub("Co..*", "\\1", 
+                                     gsub("Ltd..*", "\\1", Company.Name)))))
+
+words <- paste(c(", Inc.", "Corp.", "Co.", "Ltd.", "Limited", "Corporation", "II", "III", "IV", "VI"), collapse = "|")
+test$short.name <- trimws(gsub(words, "\\1", test$Company.Name))
+
+x <- ipo2021[3, 3]
+search_users(x)
+
 ```
 
 
+```{r}
+for (i in 1:nrow(ipo2021)){
+  x <- ipo2021[i, 3]
+  searchTwitter(x, since=ipo2021$IPO.3Mbefore, until=ipo2021$IPO.Date)
+}
+```
 
 
 
