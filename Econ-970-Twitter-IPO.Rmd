@@ -43,15 +43,6 @@ token2 <- setup_twitter_oauth(consumer_key = api_key, consumer_secret = api_key_
 access_secret=access_token_secret)
 ```
 
-
-```{r}
-uber_tweets <- rtweet::get_timeline(c("uber"), n = 3000, parse=T, token = token)
-rtweet::write_as_csv(uber_tweets, "uber_tweets.csv", prepend_ids = TRUE, na = "", fileEncoding = "UTF-8")
-```
-
-
-
-
 # IPO
 ```{r}
 ipo2021 <- read.csv("~/Downloads/ipos-2021.csv")
@@ -65,8 +56,6 @@ ipo2021 <- ipo2021 %>%
                            gsub("Corp..*", "\\1",
                                 gsub("Co..*", "\\1", 
                                      gsub("Ltd..*", "\\1", Company.Name)))))
-ipo2021$short.name[ipo2021$Company.Name == "Coupang, Inc."] <- "Coupang"
-ipo2021$short.name[ipo2021$Company.Name == "Compute Health Acquisition Corp."] <- "Compute Health Acquisition"
 
 ```
 
@@ -74,11 +63,14 @@ ipo2021$short.name[ipo2021$Company.Name == "Compute Health Acquisition Corp."] <
 twitter_handles <- read_xlsx("~/Downloads/iposignstwitter.xlsx")
 
 ipo2021 <- full_join(twitter_handles, ipo2021, by = "Symbol")
+
+ipo2021 <- ipo2021 %>%
+  drop_na(Handle)
 ```
 
 
 ```{r}
-x <- ipo2021$short.name[5]
+x <- ipo2021$Handle[3]
 search_users(x)
 test <- search_users(x) %>%
   mutate(twitter_user_id = ifelse(str_contains))
@@ -87,15 +79,26 @@ searchTwitter(x)
 
 get_sentiments("bing")
 
-
+tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
 ```
 
 
 ```{r}
 for (i in 1:nrow(ipo2021)){
-  x <- ipo2021$short.name[i]
-  searchTwitter(x, since=ipo2021$IPO.3Mbefore, until=ipo2021$IPO.Date)
+  x <- ipo2021$Handle[i]
+  tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
+  ipo_date <- ipo2021$IPO.Date[i]
+  tweets <- tweets %>%
+    mutate(created_at = as.Date(created_at)) %>%
+    filter(created_at <= ipo_date)
 }
+```
+
+
+
+```{r}
+uber_tweets <- rtweet::get_timeline(c("uber"), n = 3000, parse=T, token = token)
+rtweet::write_as_csv(uber_tweets, "uber_tweets.csv", prepend_ids = TRUE, na = "", fileEncoding = "UTF-8")
 ```
 
 
