@@ -1,0 +1,179 @@
+---
+title: "Econ-970-Twitter"
+output: html_document
+date: '2022-04-20'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(twitteR)
+library(rtweet)
+library(stringr)
+library(lubridate)
+library(tidytext)
+library(purrr)
+library(readxl)
+library(httpuv)
+library(ROAuth)
+library(RCurl)
+library(openssl)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+
+download.file(url='http://curl.haxx.se/ca/cacert.pem', destfile='cacert.pem')
+```
+
+# TWITTER
+```{r}
+# AUTHORIZATION
+
+access_token <- "1120303734-GEPzSvsSOq4pooOg0KA5xhpYatMluCB1Zd5LIMJ"
+access_token_secret <- "srfh2ElJnYTKJPZDVMlrDtv7w7MTuPvTyuiFTkcrUOW0G"
+api_key <- "E8DGvieQ4TZg0GGUqHYDEwdcz"
+api_key_secret <- "DqEbvxIwGgWw71PAupw2s0Q1MYYfi5Zq0BbZyXeHx7wavFyy0b"
+bearer_token <- "AAAAAAAAAAAAAAAAAAAAAMrjbAEAAAAAc79%2F0X%2B7SG3dwAyiDRCp0ldfA7M%3DHwUVD9XHKhmcCQZOm2p9C0YOYfCfHg4Ug4UykUAUbj2cMD2S3M"
+
+token <- create_token(
+  app = "Econ970twitteripo",
+  consumer_key = api_key,
+  consumer_secret = api_key_secret)
+
+token2 <- setup_twitter_oauth(consumer_key = api_key, consumer_secret = api_key_secret, access_token=access_token,
+access_secret=access_token_secret)
+```
+
+# IPO
+```{r}
+
+# READING IPO DATA
+
+ipo2021 <- read.csv("~/Downloads/ipos-2021.csv")
+
+# FILTERING FOR TECH
+# MUTATING FOR DATE
+# CREATING VARS FOR 1&3 MONTHS BEFORE IPO
+# SIMPLE NAMES
+
+ipo2021 <- ipo2021 %>%
+  filter(Sector == "Technology") %>% 
+  mutate(IPO.Date = as.Date(IPO.Date, format = "%b %d, %Y"), 
+         IPO.1Mbefore = IPO.Date %m-% months(1), 
+         IPO.3Mbefore = IPO.Date %m-% months(3),
+         short.name = gsub(",.*", "\\1",
+                           gsub("Corp..*", "\\1",
+                                gsub("Co..*", "\\1", 
+                                     gsub("Ltd..*", "\\1", Company.Name))))) 
+
+```
+
+```{r}
+
+# ADDING TWITTER HANDLES TO DATASET
+
+twitter_handles <- read_xlsx("~/Downloads/iposignstwitter.xlsx")
+
+ipo2021 <- full_join(twitter_handles, ipo2021, by = "Symbol")
+
+ipo2021 <- ipo2021 %>%
+  drop_na(Handle)
+```
+
+
+```{r}
+x <- ipo2021$Handle[3]
+search_users(x)
+
+searchTwitter(x)
+
+get_sentiments("bing")
+
+tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
+
+tweet_text <- tweets %>% select(screen_name, text) %>%
+    mutate(text = gsub("http\\S+", "", text)) %>%
+    unnest_tokens(word, text) %>%
+    anti_join(stop_words) %>%
+    count(word, sort = TRUE) %>%
+    top_n(15)
+
+tweet_text %>%
+  mutate(word = reorder(word, n)) %>%
+    ggplot(aes(x = word, y = n)) +
+    geom_col(fill = "firebrick") +
+    coord_flip() +
+    labs(x = "Count",
+         y = "Unique Words",
+         title = "Top Unique Word Counts in Tweets from Company Before IPO")
+```
+
+
+```{r}
+for (i in 1:nrow(ipo2021)){
+  
+  x <- ipo2021$Handle[i]
+  
+  tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
+  
+  ipo_date <- ipo2021$IPO.Date[i]
+  
+  tweets <- tweets %>%
+    #mutate(created_at = as.Date(created_at)) %>%  # date is not mutating!!! --> error
+    filter(created_at <= ipo_date)                # column type: unknown instead of date
+  
+  tweet_text <- tweets %>% select(screen_name, text) %>%
+    mutate(text = gsub("http\\S+", "", text)) %>%
+    unnest_tokens(word, text) %>%
+    anti_join(stop_words) %>%
+    count(word, sort = TRUE) %>%
+    top_n(15)
+
+  unique_words_plot <- tweet_text %>%
+    mutate(word = reorder(word, n)) %>%
+      ggplot(aes(x = word, y = n)) +
+      geom_col(fill = "firebrick") +
+      coord_flip() +
+      labs(x = "Count",
+           y = "Unique Words",
+           title = "Top Unique Word Counts in Tweets from Company Before IPO")
+  print(unique_words_plot)
+
+}
+```
+
+
+
+```{r}
+uber_tweets <- rtweet::get_timeline(c("uber"), n = 3000, parse=T, token = token)
+rtweet::write_as_csv(uber_tweets, "uber_tweets.csv", prepend_ids = TRUE, na = "", fileEncoding = "UTF-8")
+```
+
+```{r}
+  x <- ipo2021$Handle[2]
+  
+  tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
+  
+  ipo_date <- ipo2021$IPO.Date[2]
+  
+  tweets <- tweets %>%
+    #mutate(created_at = as.Date(created_at)) %>%
+    filter(created_at <= ipo_date)
+  
+  tweet_text <- tweets %>% select(screen_name, text) %>%
+    mutate(text = gsub("http\\S+", "", text)) %>%
+    unnest_tokens(word, text) %>%
+    anti_join(stop_words) %>%
+    count(word, sort = TRUE) %>%
+    top_n(15)
+
+  unique_words_plot <- tweet_text %>%
+    mutate(word = reorder(word, n)) %>%
+      ggplot(aes(x = word, y = n)) +
+      geom_col(fill = "firebrick") +
+      coord_flip() +
+      labs(x = "Count",
+           y = "Unique Words",
+           title = "Top Unique Word Counts in Tweets from Company Before IPO")
+  print(unique_words_plot)
+```
