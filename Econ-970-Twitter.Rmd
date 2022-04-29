@@ -181,16 +181,24 @@ rtweet::write_as_csv(uber_tweets, "uber_tweets.csv", prepend_ids = TRUE, na = ""
 
 
 ```{r}
+#EXTRACTION OF FOR LOOP
 
 x <- ipo2021$Handle[2]
-  
+ 
+# retrieve timeline for compant 
 tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
+
+# create new vars and filter for before IPO
 tweets <- tweets %>%
     mutate(created_at = as.Date(created_at)) %>%
     filter(created_at <= ipo_date) %>%
   mutate(n_hashtags = str_count(text, "\\#"),
          n_tags = str_count(text, "\\@"))
-  
+
+# scrape the tweets, replacing links with blank
+# count the number of hashtags (#) and tags (@) used in each tweet
+# transform the data so that every row is each word from a tweet
+# remove stop words and the word "amp" meaning ampersand
 tweet_text <- tweets %>% select(screen_name, text) %>%
   mutate(text = gsub("http\\S+", "", text),
          n_hashtags = str_count(text, "\\#"),
@@ -198,7 +206,12 @@ tweet_text <- tweets %>% select(screen_name, text) %>%
   unnest_tokens(word, text) %>%
   anti_join(stop_words, by = "word") %>%
   filter(word != "amp")
-    
+
+
+# can probably renove this part of the analysis -- don't need word frequency graphs for each company
+# count the number of words and sort by most popular
+# extract only the top 20 words
+# create a bar plot of the frequency of the most commonly tweeted words
 tweet_text %>% count(word,sort=T) %>% slice(1:20) %>% 
   ggplot(aes(x = reorder(word, n, function(n) -n), y = n)) + 
     geom_bar(stat = "identity") + 
@@ -209,9 +222,30 @@ tweet_text %>% count(word,sort=T) %>% slice(1:20) %>%
          subtitle = "for Tweets before IPO")
 
 
+# set two downloaded lexicons to objects to retrieve in depth sentiments for nrc and simple pos/neg for bing
 bing_lex <- get_sentiments("nrc")
+bing_lex_2 <- get_sentiments("bing")
+
+# parse the words used in all of the company's tweets and determine the sentiment these words portray
+# count the number of words for each sentiment
+# create a variable of the percentage of words that are of each sentiment
+# NOTE: the percentage is not the percentage out of the total number of words ever tweeted, but the percentage out of the total number of words parsed from the tweets that give off some sort of sentiment (aka not neutral or stop words)
 tweets_sentiment <- tweet_text %>% left_join(bing_lex)
-tweets_sentiment %>% filter(!is.na(sentiment)) %>% group_by(sentiment) %>% summarise(n=n())
+tweets_sentiment %>% 
+  filter(!is.na(sentiment)) %>% 
+  group_by(sentiment) %>% 
+  summarise(n=n()) %>%
+  mutate(pct_sentiment = n/sum(n))
+
+# repeat the same steps as above but using only positive and negative sentiments
+# create a column that has the same value for both rows that is the percentage of positive words out of the total number of non-neutral words parsed
+tweets_sentiment_2 <- tweet_text %>% left_join(bing_lex_2)
+tweets_sentiment_2 %>% 
+  filter(!is.na(sentiment)) %>% 
+  group_by(sentiment) %>% 
+  summarise(n=n()) %>%
+  mutate(pct_pos = n[2]/sum(n))
+
 
 ```
 
