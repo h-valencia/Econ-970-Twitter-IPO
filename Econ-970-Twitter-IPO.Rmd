@@ -83,8 +83,6 @@ ipo2021 <- ipo2021 %>%
 ```{r}
 x <- ipo2021$Handle[3]
 search_users(x)
-test <- search_users(x) %>%
-  mutate(twitter_user_id = ifelse(str_contains))
 
 searchTwitter(x)
 
@@ -120,8 +118,8 @@ for (i in 1:nrow(ipo2021)){
   ipo_date <- ipo2021$IPO.Date[i]
   
   tweets <- tweets %>%
-    mutate(created_at = as.Date(created_at)) %>%
-    filter(created_at <= ipo_date)
+    mutate(created_at = as.Date(created_at)) %>%  # date is not mutating!!! --> error
+    filter(created_at <= ipo_date)                # column type: unknown instead of date
   
   tweet_text <- tweets %>% select(screen_name, text) %>%
     mutate(text = gsub("http\\S+", "", text)) %>%
@@ -150,8 +148,34 @@ uber_tweets <- rtweet::get_timeline(c("uber"), n = 3000, parse=T, token = token)
 rtweet::write_as_csv(uber_tweets, "uber_tweets.csv", prepend_ids = TRUE, na = "", fileEncoding = "UTF-8")
 ```
 
+```{r}
+  x <- ipo2021$Handle[2]
+  
+  tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
+  
+  ipo_date <- ipo2021$IPO.Date[2]
+  
+  tweets <- tweets %>%
+    mutate(created_at = as.Date(created_at)) %>%
+    filter(created_at <= ipo_date)
+  
+  tweet_text <- tweets %>% select(screen_name, text) %>%
+    mutate(text = gsub("http\\S+", "", text)) %>%
+    unnest_tokens(word, text) %>%
+    anti_join(stop_words) %>%
+    count(word, sort = TRUE) %>%
+    top_n(15)
 
-
+  unique_words_plot <- tweet_text %>%
+    mutate(word = reorder(word, n)) %>%
+      ggplot(aes(x = word, y = n)) +
+      geom_col(fill = "firebrick") +
+      coord_flip() +
+      labs(x = "Count",
+           y = "Unique Words",
+           title = "Top Unique Word Counts in Tweets from Company Before IPO")
+  print(unique_words_plot)
+```
 
 
 

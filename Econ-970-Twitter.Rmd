@@ -21,6 +21,7 @@ library(openssl)
 library(tidyverse)
 library(dplyr)
 library(ggplot2)
+library(textdata)
 
 download.file(url='http://curl.haxx.se/ca/cacert.pem', destfile='cacert.pem')
 ```
@@ -125,7 +126,7 @@ for (i in 1:nrow(ipo2021)){
   tweet_text <- tweets %>% select(screen_name, text) %>%
     mutate(text = gsub("http\\S+", "", text)) %>%
     unnest_tokens(word, text) %>%
-    anti_join(stop_words) %>%
+    anti_join(stop_words, by = "word") %>%
     count(word, sort = TRUE) %>%
     top_n(15)
 
@@ -163,7 +164,7 @@ rtweet::write_as_csv(uber_tweets, "uber_tweets.csv", prepend_ids = TRUE, na = ""
   tweet_text <- tweets %>% select(screen_name, text) %>%
     mutate(text = gsub("http\\S+", "", text)) %>%
     unnest_tokens(word, text) %>%
-    anti_join(stop_words) %>%
+    anti_join(stop_words, by = "word") %>%
     count(word, sort = TRUE) %>%
     top_n(15)
 
@@ -177,3 +178,108 @@ rtweet::write_as_csv(uber_tweets, "uber_tweets.csv", prepend_ids = TRUE, na = ""
            title = "Top Unique Word Counts in Tweets from Company Before IPO")
   print(unique_words_plot)
 ```
+
+
+```{r}
+
+x <- ipo2021$Handle[2]
+  
+tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
+tweets <- tweets %>%
+    mutate(created_at = as.Date(created_at)) %>%
+    filter(created_at <= ipo_date) %>%
+  mutate(n_hashtags = str_count(text, "\\#"),
+         n_tags = str_count(text, "\\@"))
+  
+tweet_text <- tweets %>% select(screen_name, text) %>%
+  mutate(text = gsub("http\\S+", "", text),
+         n_hashtags = str_count(text, "\\#"),
+         n_tags = str_count(text, "\\@")) %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words, by = "word") %>%
+  filter(word != "amp")
+    
+tweet_text %>% count(word,sort=T) %>% slice(1:20) %>% 
+  ggplot(aes(x = reorder(word, n, function(n) -n), y = n)) + 
+    geom_bar(stat = "identity") + 
+    theme(axis.text.x = element_text(angle = 60, hjust = 1)) + 
+    labs(x = "Common Words",
+         y = "Count",
+         title = "Most Commonly Tweeted Words",
+         subtitle = "for Tweets before IPO")
+
+
+bing_lex <- get_sentiments("nrc")
+tweets_sentiment <- tweet_text %>% left_join(bing_lex)
+tweets_sentiment %>% filter(!is.na(sentiment)) %>% group_by(sentiment) %>% summarise(n=n())
+
+```
+
+```{r}
+
+# load in 10 year treasury interest rate data
+
+tnx <- read.csv("^TNX.csv") 
+
+# limit data to only the date and the close date
+# re-classify the date column as a date and match the name to the date column of IPO.Date in the ipo2021 df
+
+tnx <- tnx %>% select(Date, Close) %>%
+  mutate(IPO.Date = as.Date(Date))
+
+# full join the treasury data to the ipo data frame
+# rename the Close.y variable to tnx
+# create binary success variables for the IPO both 1 month and 6 months post-IPO: look at the percent change in the IPO's price. If it is greater than or equal to 0 then 1 = successful, otherwise 0 = failure.
+
+ipo2021 <- full_join(ipo2021, tnx, by = "IPO.Date") %>%
+  mutate(tnx = Close.y,
+         success.1M = ifelse(Change.1M >= 0, 1, 0),
+         success.6M = ifelse(Change.6M >= 0, 1, 0))
+
+```
+
+```{r}
+
+# create new empty columns for variables that will later be filled with the for loop data
+# the mean number of hashtags used per Tweet by a company
+# the mean number of accounts tagged per Tweet 
+
+ipo2021$mean_hashtags <- 0
+ipo2021$mean_tags <- 0
+
+# for loop for each company in the ipo2021 data set
+
+for (i in 1:nrow(ipo2021)) {
+  
+# extract each company Twitter handle
+x <- ipo2021$Handle[i]
+
+# extract the most recent 3000 tweets  
+tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
+
+# filter extracted tweets so that it is only those from before the company's IPO date
+# this is where I am running into issues with the for loop - it used to run smoothly but there is something wrong with the created_at variable. I do not think that the as.Date function is converting it into a date.
+# another possible problem could be that the company was not tweeting pre-IPO; need to figure this out and find a way to control for it / eliminate it from the dataset
+# I am looking to run the for loop for each company and extract hashtag means, tag means, mean sentiment scores, etc. (from a column) and then put these means into a cell in the ipo2021 df
+tweets <- tweets %>%
+    #mutate(created_at = as.Date(created_at)) %>%
+    filter(created_at <= ipo_date) %>%
+  mutate(n_hashtags = str_count(text, "\\#"),
+         n_tags = str_count(text, "\\@"))
+
+# put mean into cell
+ipo2021$mean_hashtags[i] <- mean(tweets$n_hashtags, na.rm = TRUE)
+ipo2021$mean_tags[i] <- mean(tweets$n_tags, na.rm = TRUE)
+
+}
+
+```
+
+
+
+
+
+
+
+
+
