@@ -22,6 +22,8 @@ library(tidyverse)
 library(dplyr)
 library(ggplot2)
 library(textdata)
+library(psych)
+library(gt)
 
 download.file(url='http://curl.haxx.se/ca/cacert.pem', destfile='cacert.pem')
 ```
@@ -144,12 +146,6 @@ for (i in 1:nrow(ipo2021)){
 ```
 
 
-
-```{r}
-uber_tweets <- rtweet::get_timeline(c("uber"), n = 3000, parse=T, token = token)
-rtweet::write_as_csv(uber_tweets, "uber_tweets.csv", prepend_ids = TRUE, na = "", fileEncoding = "UTF-8")
-```
-
 ```{r}
   x <- ipo2021$Handle[2]
   
@@ -237,6 +233,8 @@ tweets_sentiment %>%
   summarise(n=n()) %>%
   mutate(pct_sentiment = n/sum(n))
 
+# Want to create new columns in the ipo2021 df that is for the percent of each sentiment (ex. one column = pct_angry, next column = pct_anticipation...) and fill the column with each percentage by company. Will likely have to pivot_wider then extract?
+
 # repeat the same steps as above but using only positive and negative sentiments
 # create a column that has the same value for both rows that is the percentage of positive words out of the total number of non-neutral words parsed
 tweets_sentiment_2 <- tweet_text %>% left_join(bing_lex_2)
@@ -246,7 +244,7 @@ tweets_sentiment_2 %>%
   summarise(n=n()) %>%
   mutate(pct_pos = n[2]/sum(n))
 
-
+# want to create a pct_positive column in the ipo2021 data. create a new col then extract and replace for each company
 ```
 
 ```{r}
@@ -265,10 +263,11 @@ tnx <- tnx %>% select(Date, Close) %>%
 # rename the Close.y variable to tnx
 # create binary success variables for the IPO both 1 month and 6 months post-IPO: look at the percent change in the IPO's price. If it is greater than or equal to 0 then 1 = successful, otherwise 0 = failure.
 
-ipo2021 <- full_join(ipo2021, tnx, by = "IPO.Date") %>%
+ipo.2021 <- left_join(ipo2021, tnx, by = "IPO.Date") %>%
   mutate(tnx = Close.y,
          success.1M = ifelse(Change.1M >= 0, 1, 0),
-         success.6M = ifelse(Change.6M >= 0, 1, 0))
+         success.6M = ifelse(Change.6M >= 0, 1, 0)) %>%
+  select(!Close.y)
 
 ```
 
@@ -278,15 +277,15 @@ ipo2021 <- full_join(ipo2021, tnx, by = "IPO.Date") %>%
 # the mean number of hashtags used per Tweet by a company
 # the mean number of accounts tagged per Tweet 
 
-ipo2021$mean_hashtags <- 0
-ipo2021$mean_tags <- 0
+ipo.2021$mean_hashtags <- 0
+ipo.2021$mean_tags <- 0
 
 # for loop for each company in the ipo2021 data set
 
-for (i in 1:nrow(ipo2021)) {
+for (i in 1:nrow(ipo.2021)) {
   
 # extract each company Twitter handle
-x <- ipo2021$Handle[i]
+x <- ipo.2021$Handle[i]
 
 # extract the most recent 3000 tweets  
 tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
@@ -302,12 +301,76 @@ tweets <- tweets %>%
          n_tags = str_count(text, "\\@"))
 
 # put mean into cell
-ipo2021$mean_hashtags[i] <- mean(tweets$n_hashtags, na.rm = TRUE)
-ipo2021$mean_tags[i] <- mean(tweets$n_tags, na.rm = TRUE)
+ipo.2021$mean_hashtags[i] <- mean(tweets$n_hashtags, na.rm = TRUE)
+ipo.2021$mean_tags[i] <- mean(tweets$n_tags, na.rm = TRUE)
 
 }
 
 ```
+
+
+```{r}
+month_summary <- ipo.2021 %>%
+  group_by(IPO.Date) %>%
+  group_by(month = lubridate::floor_date(IPO.Date, "month")) %>%
+  group_by(month) %>%
+  summarize(n_IPOs = n())
+  
+month_summary %>%
+  mutate(month = as.Date(month)) %>%
+  ggplot(aes(x = month, y = n_IPOs)) +
+  geom_col(fill = "firebrick") +
+  labs(x = "Month",
+       y = "Number of Technology IPOs",
+       title = "Number of Technology IPOs by Month in 2021") +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b. '%y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave("month_summary_graph.png")
+```
+
+```{r}
+ipo2021_summary <- ipo.2021 %>%
+  select(Company.Name.x, IPO.Price, Return, Market.Cap, Shares.Offered, Deal.Size, Open.Price, Industry, Country, Employees, Volume, Revenue, EBITDA, Change.1M, Change.1M, Change.6M, success.1M, success.6M, tnx) %>%
+  describe() %>%
+  select(n, mean, sd, median, range, se)
+
+ipo2021_summary <- cbind(Variable = rownames(ipo2021_summary), ipo2021_summary)
+
+ipo2021_summary %>% gt() %>%
+  fmt_number(columns = 2:7, decimals = 2)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
