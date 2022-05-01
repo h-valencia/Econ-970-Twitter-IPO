@@ -24,12 +24,13 @@ library(ggplot2)
 library(textdata)
 library(psych)
 library(gt)
+library(corrplot)
 
 download.file(url='http://curl.haxx.se/ca/cacert.pem', destfile='cacert.pem')
 ```
 
 # TWITTER
-```{r}
+```{r authorization}
 # AUTHORIZATION
 
 access_token <- "1120303734-GEPzSvsSOq4pooOg0KA5xhpYatMluCB1Zd5LIMJ"
@@ -48,16 +49,16 @@ access_secret=access_token_secret)
 ```
 
 # IPO
-```{r}
+```{r load}
 
 # READING IPO DATA
 
 ipo2021 <- read.csv("~/Downloads/ipos-2021.csv")
 
-# FILTERING FOR TECH
-# MUTATING FOR DATE
-# CREATING VARS FOR 1&3 MONTHS BEFORE IPO
-# SIMPLE NAMES
+# filtering for technology companies
+# changing the format of the date variable
+# creating variables for 1 and 3 months post IPO
+# making simple company names
 
 ipo2021 <- ipo2021 %>%
   filter(Sector == "Technology") %>% 
@@ -66,25 +67,30 @@ ipo2021 <- ipo2021 %>%
          IPO.3Mbefore = IPO.Date %m-% months(3),
          short.name = gsub(",.*", "\\1",
                            gsub("Corp..*", "\\1",
-                                gsub("Co..*", "\\1", 
+                                gsub("Co..*", "\\1",
                                      gsub("Ltd..*", "\\1", Company.Name))))) 
 
 ```
 
-```{r}
+```{r handles}
 
 # ADDING TWITTER HANDLES TO DATASET
 
 twitter_handles <- read_xlsx("~/Downloads/iposignstwitter.xlsx")
 
+# joining handles to IPO data by the stock symbol name
 ipo2021 <- full_join(twitter_handles, ipo2021, by = "Symbol")
 
+# dropping NAs
+# removing Nuvei Tech: They very recently deleted their Twitter Account
 ipo2021 <- ipo2021 %>%
   drop_na(Handle)
+
+ipo2021$Handle[ipo2021$Symbol == "NVEI"] <- "Nuvei"
 ```
 
 
-```{r}
+```{r uniqueplot}
 x <- ipo2021$Handle[3]
 search_users(x)
 
@@ -112,7 +118,7 @@ tweet_text %>%
 ```
 
 
-```{r}
+```{r, eval = FALSE}
 for (i in 1:nrow(ipo2021)){
   
   x <- ipo2021$Handle[i]
@@ -122,8 +128,8 @@ for (i in 1:nrow(ipo2021)){
   ipo_date <- ipo2021$IPO.Date[i]
   
   tweets <- tweets %>%
-    #mutate(created_at = as.Date(created_at)) %>%  # date is not mutating!!! --> error
-    filter(created_at <= ipo_date)                # column type: unknown instead of date
+    mutate(created_at = as.Date(created_at)) %>%  
+    filter(created_at <= ipo_date)               
   
   tweet_text <- tweets %>% select(screen_name, text) %>%
     mutate(text = gsub("http\\S+", "", text)) %>%
@@ -146,7 +152,7 @@ for (i in 1:nrow(ipo2021)){
 ```
 
 
-```{r}
+```{r unqiueplot2}
   x <- ipo2021$Handle[2]
   
   tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
@@ -176,10 +182,11 @@ for (i in 1:nrow(ipo2021)){
 ```
 
 
-```{r}
+```{r forloopextraction}
+
 #EXTRACTION OF FOR LOOP
 
-x <- ipo2021$Handle[2]
+x <- ipo2021$Handle[16]
  
 # retrieve timeline for compant 
 tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
@@ -204,18 +211,18 @@ tweet_text <- tweets %>% select(screen_name, text) %>%
   filter(word != "amp")
 
 
-# can probably renove this part of the analysis -- don't need word frequency graphs for each company
-# count the number of words and sort by most popular
-# extract only the top 20 words
-# create a bar plot of the frequency of the most commonly tweeted words
-tweet_text %>% count(word,sort=T) %>% slice(1:20) %>% 
-  ggplot(aes(x = reorder(word, n, function(n) -n), y = n)) + 
-    geom_bar(stat = "identity") + 
-    theme(axis.text.x = element_text(angle = 60, hjust = 1)) + 
-    labs(x = "Common Words",
-         y = "Count",
-         title = "Most Commonly Tweeted Words",
-         subtitle = "for Tweets before IPO")
+# # can probably remove this part of the analysis -- don't need word frequency graphs for each company
+# # count the number of words and sort by most popular
+# # extract only the top 20 words
+# # create a bar plot of the frequency of the most commonly tweeted words
+# tweet_text %>% count(word,sort=T) %>% slice(1:20) %>% 
+#   ggplot(aes(x = reorder(word, n, function(n) -n), y = n)) + 
+#     geom_bar(stat = "identity") + 
+#     theme(axis.text.x = element_text(angle = 60, hjust = 1)) + 
+#     labs(x = "Common Words",
+#          y = "Count",
+#          title = "Most Commonly Tweeted Words",
+#          subtitle = "for Tweets before IPO")
 
 
 # set two downloaded lexicons to objects to retrieve in depth sentiments for nrc and simple pos/neg for bing
@@ -227,7 +234,7 @@ bing_lex_2 <- get_sentiments("bing")
 # create a variable of the percentage of words that are of each sentiment
 # NOTE: the percentage is not the percentage out of the total number of words ever tweeted, but the percentage out of the total number of words parsed from the tweets that give off some sort of sentiment (aka not neutral or stop words)
 tweets_sentiment <- tweet_text %>% left_join(bing_lex)
-tweets_sentiment %>% 
+tweets_sentiment_table <- tweets_sentiment %>% 
   filter(!is.na(sentiment)) %>% 
   group_by(sentiment) %>% 
   summarise(n=n()) %>%
@@ -235,19 +242,140 @@ tweets_sentiment %>%
 
 # Want to create new columns in the ipo2021 df that is for the percent of each sentiment (ex. one column = pct_angry, next column = pct_anticipation...) and fill the column with each percentage by company. Will likely have to pivot_wider then extract?
 
+tweets_sentiment_table <- tweets_sentiment_table %>% select(!n) %>% pivot_wider(names_from = sentiment, values_from = pct_sentiment)
+
+cols_sent <- c( "anger","anticipation","disgust","fear", "joy", "negtive", "positive", "sadness", "surprise", "trust")
+tweets_sentiment_table[cols_sent[!(cols_sent %in% colnames(tweets_sentiment_table))]] = 0
+tweets_sentiment_table
+
+
 # repeat the same steps as above but using only positive and negative sentiments
 # create a column that has the same value for both rows that is the percentage of positive words out of the total number of non-neutral words parsed
 tweets_sentiment_2 <- tweet_text %>% left_join(bing_lex_2)
-tweets_sentiment_2 %>% 
+tweets_sentiment_2_table <- tweets_sentiment_2 %>% 
   filter(!is.na(sentiment)) %>% 
   group_by(sentiment) %>% 
   summarise(n=n()) %>%
   mutate(pct_pos = n[2]/sum(n))
 
+ipo2021$bing_pct_positive[16] <- tweets_sentiment_2_table$pct_pos[2]
+
 # want to create a pct_positive column in the ipo2021 data. create a new col then extract and replace for each company
 ```
 
-```{r}
+```{r sentimentcols}
+# create new columns for each sentiment
+# filling with 0's as place holders
+ipo2021$anger <- 0
+ipo2021$anticipation <- 0
+ipo2021$disgust <- 0
+ipo2021$fear <- 0
+ipo2021$joy <- 0
+ipo2021$nrc_negative <- 0
+ipo2021$nrc_positive <- 0
+ipo2021$sadness <- 0
+ipo2021$surprise <- 0
+ipo2021$trust <- 0
+
+ipo2021$bing_pct_positive <- 0
+
+```
+
+```{r forloop}
+
+for (i in 1:nrow(ipo2021)){
+
+  x <- ipo2021$Handle[i]
+ 
+  # retrieve timeline for company 
+  tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
+  
+  # create new vars and filter for before IPO
+  tweets <- tweets %>%
+      mutate(created_at = as.Date(created_at)) %>%
+      filter(created_at <= ipo_date) %>%
+    mutate(n_hashtags = str_count(text, "\\#"),
+           n_tags = str_count(text, "\\@"))
+  
+  # scrape the tweets, replacing links with blank
+  # count the number of hashtags (#) and tags (@) used in each tweet
+  # transform the data so that every row is each word from a tweet
+  # remove stop words and the word "amp" meaning ampersand
+  tweet_text <- tweets %>% select(screen_name, text) %>%
+    mutate(text = gsub("http\\S+", "", text),
+           n_hashtags = str_count(text, "\\#"),
+           n_tags = str_count(text, "\\@")) %>%
+    unnest_tokens(word, text) %>%
+    anti_join(stop_words, by = "word") %>%
+    filter(word != "amp")
+  
+  ipo.2021$mean_hashtags[i] <- mean(tweets$n_hashtags, na.rm = TRUE)
+  ipo.2021$mean_tags[i] <- mean(tweets$n_tags, na.rm = TRUE)
+  
+  # set two downloaded lexicons to objects to retrieve in depth sentiments for nrc and simple pos/neg for bing
+  bing_lex <- get_sentiments("nrc")
+  bing_lex_2 <- get_sentiments("bing")
+  
+  # parse the words used in all of the company's tweets and determine the sentiment these words portray
+  # count the number of words for each sentiment
+  # create a variable of the percentage of words that are of each sentiment
+  # NOTE: the percentage is not the percentage out of the total number of words ever tweeted, but the percentage out of the total number of words parsed from the tweets that give off some sort of sentiment (aka not neutral or stop words)
+  tweets_sentiment <- tweet_text %>% left_join(bing_lex)
+  tweets_sentiment_table <- tweets_sentiment %>% 
+    filter(!is.na(sentiment)) %>% 
+    group_by(sentiment) %>% 
+    summarise(n=n()) %>%
+    mutate(pct_sentiment = n/sum(n))
+  
+  
+  # Want to create new columns in the ipo2021 df that is for the percent of each sentiment (ex. one column = pct_angry, next column = pct_anticipation...) and fill the column with each percentage by company. Will likely have to pivot_wider then extract?
+  
+  tweets_sentiment_table <- tweets_sentiment_table %>% 
+    select(!n) %>% 
+    pivot_wider(names_from = sentiment, 
+                values_from = pct_sentiment)
+  
+  cols_sent <- c( "anger","anticipation","disgust","fear", "joy", "negtive", "positive", "sadness", "surprise", "trust")
+  tweets_sentiment_table[cols_sent[!(cols_sent %in% colnames(tweets_sentiment_table))]] = 0
+  
+  print(tweets_sentiment_table)
+
+  ipo2021$anger[i] <- ifelse(nrow(tweets_sentiment_table) == 0, 0, tweets_sentiment_table$anger[1])
+  ipo2021$anticipation[i] <- ifelse(nrow(tweets_sentiment_table) == 0, 0, tweets_sentiment_table$anticipation[1])
+  ipo2021$disgust[i] <- ifelse(nrow(tweets_sentiment_table) == 0, 0, tweets_sentiment_table$disgust[1])
+  ipo2021$fear[i] <- ifelse(nrow(tweets_sentiment_table) == 0, 0, tweets_sentiment_table$fear[1])
+  ipo2021$joy[i] <- ifelse(nrow(tweets_sentiment_table) == 0, 0, tweets_sentiment_table$joy[1])
+  ipo2021$nrc_negative[i] <- ifelse(nrow(tweets_sentiment_table) == 0, 0, tweets_sentiment_table$negative[1])
+  ipo2021$nrc_positive[i] <- ifelse(nrow(tweets_sentiment_table) == 0, 0, tweets_sentiment_table$positive[1])
+  ipo2021$sadness[i] <- ifelse(nrow(tweets_sentiment_table) == 0, 0, tweets_sentiment_table$sadness[1])
+
+  
+  # repeat the same steps as above but using only positive and negative sentiments
+  # create a column that has the same value for both rows that is the percentage of positive words out of the total number of non-neutral words parsed
+  tweets_sentiment_2 <- tweet_text %>% left_join(bing_lex_2, by = "word")
+  tweets_sentiment_2 %>% 
+    filter(!is.na(sentiment)) %>% 
+    group_by(sentiment) %>% 
+    summarise(n=n()) %>%
+    mutate(pct_pos = n[2]/sum(n))
+
+  # want to create a pct_positive column in the ipo2021 data. create a new col then extract and replace for each company
+  
+  ipo2021$bing_pct_positive[i] <- ifelse(nrow(tweets_sentiment_table) == 0, 0, tweets_sentiment_2_table$pct_pos[2])
+  
+}
+```
+
+
+
+
+
+
+
+
+
+
+```{r treasury}
 
 # load in 10 year treasury interest rate data
 
@@ -271,43 +399,9 @@ ipo.2021 <- left_join(ipo2021, tnx, by = "IPO.Date") %>%
 
 ```
 
-```{r}
 
-# create new empty columns for variables that will later be filled with the for loop data
-# the mean number of hashtags used per Tweet by a company
-# the mean number of accounts tagged per Tweet 
 
-ipo.2021$mean_hashtags <- 0
-ipo.2021$mean_tags <- 0
-
-# for loop for each company in the ipo2021 data set
-
-for (i in 1:nrow(ipo.2021)) {
-  
-# extract each company Twitter handle
-x <- ipo.2021$Handle[i]
-
-# extract the most recent 3000 tweets  
-tweets <- rtweet::get_timeline(c(x), n = 3000, parse=T, token = token)
-
-# filter extracted tweets so that it is only those from before the company's IPO date
-# this is where I am running into issues with the for loop - it used to run smoothly but there is something wrong with the created_at variable. I do not think that the as.Date function is converting it into a date.
-# another possible problem could be that the company was not tweeting pre-IPO; need to figure this out and find a way to control for it / eliminate it from the dataset
-# I am looking to run the for loop for each company and extract hashtag means, tag means, mean sentiment scores, etc. (from a column) and then put these means into a cell in the ipo2021 df
-tweets <- tweets %>%
-    #mutate(created_at = as.Date(created_at)) %>%
-    filter(created_at <= ipo_date) %>%
-  mutate(n_hashtags = str_count(text, "\\#"),
-         n_tags = str_count(text, "\\@"))
-
-# put mean into cell
-ipo.2021$mean_hashtags[i] <- mean(tweets$n_hashtags, na.rm = TRUE)
-ipo.2021$mean_tags[i] <- mean(tweets$n_tags, na.rm = TRUE)
-
-}
-
-```
-
+# SUMMARIZING DATA
 
 ```{r}
 month_summary <- ipo.2021 %>%
@@ -341,7 +435,34 @@ ipo2021_summary %>% gt() %>%
   fmt_number(columns = 2:7, decimals = 2)
 ```
 
+CREATE PLOTS OF VARIABLES OVER TIME... CHECK FOR CONFOUNDING?
 
+```{r}
+variables <- c("IPO.Price", "Return", "Market.Cap", "Shares.Offered", "Deal.Size", "Open.Price", "Employees", "Volume", "Revenue", "EBITDA", "Change.1M", "Change.6M", "success.1M", "success.6M", "tnx")
+
+matrix <- ipo.2021 %>%
+  select(IPO.Price, Return, Market.Cap, Shares.Offered, Deal.Size, Open.Price, Employees, Volume, Revenue, EBITDA, Change.1M, Change.6M, success.1M, success.6M, tnx) %>%
+  mutate(tnx = as.numeric(tnx))
+
+matrix[is.na(matrix)] <- 0
+
+correls<-round(cor(matrix),2)
+
+correls[upper.tri(correls)]<-""
+correls<-as.data.frame(correls)
+colnames(correls) <- c(variables)
+rownames(correls) <- c(variables)
+correls
+
+testRes = cor.mtest(matrix, conf.level = 0.95)
+corrdata <- cor(matrix)
+colnames(corrdata) <- c(variables)
+rownames(corrdata) <- c(variables)
+corrplot.mixed(corrdata, upper = "number", lower = "color", tl.pos = "lt", 
+               order = "hclust", tl.col = "black", tl.srt = 45, sig.level = 0.05, number.cex = 0.5)
+corrplot(corrdata, method = 'circle', type = 'lower',
+         addCoef.col ='black', number.cex = 0.5, order = 'AOE', diag=FALSE)
+```
 
 
 
