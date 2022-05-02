@@ -25,6 +25,7 @@ library(textdata)
 library(psych)
 library(gt)
 library(corrplot)
+library(lmtest)
 
 download.file(url='http://curl.haxx.se/ca/cacert.pem', destfile='cacert.pem')
 ```
@@ -278,13 +279,15 @@ ipo2021$surprise <- 0
 ipo2021$trust <- 0
 
 ipo2021$bing_pct_positive <- 0
+ipo2021$mean_hashtags <- 0
+ipo2021$mean_hashtags <- 0
 
 ```
 
 ```{r forloop}
 
 for (i in 1:nrow(ipo2021)){
-
+  
   x <- ipo2021$Handle[i]
  
   # retrieve timeline for company 
@@ -309,8 +312,9 @@ for (i in 1:nrow(ipo2021)){
     anti_join(stop_words, by = "word") %>%
     filter(word != "amp")
   
-  ipo.2021$mean_hashtags[i] <- mean(tweets$n_hashtags, na.rm = TRUE)
-  ipo.2021$mean_tags[i] <- mean(tweets$n_tags, na.rm = TRUE)
+  ipo2021$mean_hashtags[i] <- mean(tweets$n_hashtags, na.rm = TRUE)
+  ipo2021$mean_tags[i] <- mean(tweets$n_tags, na.rm = TRUE)
+  
   
   # set two downloaded lexicons to objects to retrieve in depth sentiments for nrc and simple pos/neg for bing
   bing_lex <- get_sentiments("nrc")
@@ -370,11 +374,6 @@ for (i in 1:nrow(ipo2021)){
 
 
 
-
-
-
-
-
 ```{r treasury}
 
 # load in 10 year treasury interest rate data
@@ -397,6 +396,9 @@ ipo.2021 <- left_join(ipo2021, tnx, by = "IPO.Date") %>%
          success.6M = ifelse(Change.6M >= 0, 1, 0)) %>%
   select(!Close.y)
 
+# replace NaN character with NA 
+ipo.2021$mean_hashtags[ipo.2021$mean_hashtags == "NaN"] <- NA
+ipo.2021$mean_tags[ipo.2021$mean_tags == "NaN"] <- NA
 ```
 
 
@@ -424,8 +426,23 @@ ggsave("month_summary_graph.png")
 ```
 
 ```{r}
+
+# summary statistics of ipo data 
+
 ipo2021_summary <- ipo.2021 %>%
   select(Company.Name.x, IPO.Price, Return, Market.Cap, Shares.Offered, Deal.Size, Open.Price, Industry, Country, Employees, Volume, Revenue, EBITDA, Change.1M, Change.1M, Change.6M, success.1M, success.6M, tnx) %>%
+  describe() %>%
+  select(n, mean, sd, median, range, se)
+
+ipo2021_summary <- cbind(Variable = rownames(ipo2021_summary), ipo2021_summary)
+
+ipo2021_summary %>% gt() %>%
+  fmt_number(columns = 2:7, decimals = 2)
+
+# summary statistics of twitter data
+
+ipo2021_summary <- ipo.2021 %>%
+  select(mean_hashtags, mean_tags, anger, anticipation, disgust, fear, joy, nrc_negative, nrc_positive, sadness, surprise, trust) %>%
   describe() %>%
   select(n, mean, sd, median, range, se)
 
@@ -464,10 +481,78 @@ corrplot(corrdata, method = 'circle', type = 'lower',
          addCoef.col ='black', number.cex = 0.5, order = 'AOE', diag=FALSE)
 ```
 
+```{r}
+success.6M ~ IPO.Price + Market.Cap + Employees + Volume + Revenue + tnx + EBITDA + Customer.Type + bing_pct_positive + anger + anticipation + disgust + joy + fear + nrc_negative + nrc_positive + sadness + `mean_hashtags` + `mean_tags`
+
+variables <- c("success.6M", "IPO.Price", "Market.Cap", "Employees", "Volume", "Revenue", "tnx", "EBITDA", "bing_pct_positive", "anger", "anticipation", "disgust", "joy", "fear", "nrc_negative", "nrc_positive", "sadness", "mean_hashtags", "mean_tags")
+
+matrix <- ipo.2021 %>%
+  select("success.6M", "IPO.Price", "Market.Cap", "Employees", "Volume", "Revenue", "tnx", "EBITDA", "bing_pct_positive", "anger", "anticipation", "disgust", "joy", "fear", "nrc_negative", "nrc_positive", "sadness", "mean_hashtags", "mean_tags") %>%
+  mutate(tnx = as.numeric(tnx))
+
+matrix[is.na(matrix)] <- 0
+
+correls<-round(cor(matrix),2)
+
+correls[upper.tri(correls)]<-""
+correls<-as.data.frame(correls)
+colnames(correls) <- c(variables)
+rownames(correls) <- c(variables)
+correls
+
+testRes = cor.mtest(matrix, conf.level = 0.95)
+corrdata <- cor(matrix)
+colnames(corrdata) <- c(variables)
+rownames(corrdata) <- c(variables)
+corrplot.mixed(corrdata, upper = "number", lower = "color", tl.pos = "lt", 
+               order = "hclust", tl.col = "black", tl.srt = 45, sig.level = 0.05, number.cex = 0.5)
+corrplot(corrdata, method = 'circle', type = 'lower',
+         addCoef.col ='black', number.cex = 0.5, order = 'AOE', diag=FALSE)
+```
 
 
+```{r}
+
+# importing data set with business type
+
+xl <- read_xlsx("ec970ipo.xlsx")
+xl <- xl %>% select(!Company.Name.x)
+
+# adding business type column to ipo df
+# making cells more descriptive
+
+ipo.2021 <- full_join(ipo.2021, xl, by = "Symbol")
+ipo.2021$Customer.Type[ipo.2021$Customer.Type == "B"] <- "Business"
+ipo.2021$Customer.Type[ipo.2021$Customer.Type == "C"] <- "Customer"
 
 
+xlsp <- read_xlsx("SPipo.xlsx")
+ipo.2021 <- left_join(ipo.2021, xlsp, by = "IPO.Date")
+
+```
+
+
+```{r}
+
+# new df with only relevant variables
+
+neat <- ipo.2021 %>%
+  select(Company.Name.x, Symbol, IPO.Date, IPO.Price, Market.Cap, Shares.Offered, Industry, Country, Employees, Founded, Volume, Revenue, EBITDA, Net.Income, Change.1W, Change.1M, Change.6M, tnx, success.1M, success.6M, mean_hashtags, mean_tags, Customer.Type, bing_pct_positive, anger, anticipation, disgust, joy, fear, nrc_negative, nrc_positive, sadness, surprise, trust)
+
+neat <- neat %>% mutate(tnx = as.numeric(tnx),
+                        month = month(as.POSIXlt(IPO.Date, format="%m")))
+```
+
+```{r}
+
+fit1 <- felm(data = neat, success.1M ~ IPO.Price + Employees + (Revenue/Market.Cap) + tnx + (EBITDA/Revenue) | month)
+coeftest(fit1)
+
+library(lfe)
+
+fit2 <- felm(data = neat, success.6M ~ IPO.Price + Market.Cap + Employees + Volume + Revenue + tnx + EBITDA + Customer.Type + nrc_negative + nrc_positive + `mean_hashtags` + `mean_tags` | month)
+coeftest(fit2)
+```
 
 
 
